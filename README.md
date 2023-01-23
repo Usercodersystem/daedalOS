@@ -7,7 +7,7 @@
 
 # Feature Overview
 
-[![Feature Overview](https://img.youtube.com/vi/geCNiJnw8iE/0.jpg)](http://www.youtube.com/watch?v=geCNiJnw8iE)
+[![Feature Overview](https://img.youtube.com/vi/CkvKPspIPLs/mqdefault.jpg)](http://www.youtube.com/watch?v=CkvKPspIPLs)
 
 # Try It 🏁
 
@@ -22,7 +22,7 @@ cd daedalOS
 
 ### Yarn
 
-- [Node.js](https://nodejs.org/en/download/) (**v16 LTS**)
+- [Node.js](https://nodejs.org/en/download/) (**LTS**)
 - [Yarn](https://classic.yarnpkg.com/en/) (`npm install --global yarn`)
 
 ```
@@ -70,6 +70,7 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
   - Open with, Open file/folder location, Open in new window, Open Terminal here
   - Download, Add to archive, Extract here, Set as wallpaper, Convert audio/video/photo/spreadsheets
   - Sort by, New Folder, New Text Document
+  - Screen Capture
 - Keyboard Shortcuts
   - CTRL+C, CTRL+V, CTRL+X, CTRL+A, Delete
   - F2, F5, Backspace, Arrows, Enter
@@ -111,8 +112,10 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
 ### Background
 
 - Dynamic animated wallpapers ([OffscreenCanvas](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas)/[Web Worker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers))
-  - [Vanta.js](https://www.vantajs.com/)
+  - [Waves](https://www.vantajs.com/?effect=waves)
   - [Hexells](https://znah.net/hexells/)
+  - [Matrix](https://rezmason.github.io/matrix/)
+  - [Coastal Landscape](https://www.shadertoy.com/view/fstyD4)
 - Set via images (Fill, Fit, Stretch, Tile, Center)
 - [Astronomy Picture of the Day](https://api.nasa.gov/#apod)
 
@@ -146,6 +149,11 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
 
 - Plays console game roms
 
+### [IRC](https://kiwiirc.com/)
+
+- Internet Relay Chat Client
+- Connects over WebSockets
+
 ### [js-dos](https://js-dos.com/) (**_.exe, .jsdos, .zip_**)
 
 - DOS emulator
@@ -172,12 +180,15 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
 
 ### [PDF](https://mozilla.github.io/pdf.js/) (**_.pdf_**)
 
-- Renders PDF's
+- Render/Print PDF's
 - Page current/count & Zoom
 
 ### Photos
 
 - [Supported Formats](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img#supported_image_formats)
+  - [JPEG XL](https://github.com/niutech/jxl.js) (**_.jxl_**)
+  - [QOI](https://gist.github.com/nicolaslegland/f0577cb49b1e56b729a2c0fc0aa151ba) (**_.qoi_**)
+  - [TIFF](https://github.com/photopea/UTIF.js) (**_.tif, .tiff_**)
 - Fullscreen & [Zoom](https://github.com/anvaka/panzoom)
 
 ### [Ruffle](https://ruffle.rs/) (**_.swf, .spl_**)
@@ -196,8 +207,9 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
 - [Weather information](https://wttr.in/)
 - [eSheep](https://adrianotiger.github.io/web-esheep/)
 - Activate from Start Menu or **_SHIFT+F10_**
+- Neofetch
 
-### [TinyMCE](https://www.tiny.cloud/tinymce/) (**_.whtml_**)
+### [TinyMCE](https://www.tiny.cloud/tinymce/) (**_.rtf, .whtml_**)
 
 - Read & WYSIWYG modes
 - File save support
@@ -224,3 +236,4 @@ docker run -dp 3000:3000 --rm --name daedalos daedalos
 - Winamp audio player
 - [Skin support](https://skins.webamp.org/)
 - Playlist & streaming support
+- Visualization support (["Milkdrop"](https://github.com/jberg/butterchurn))

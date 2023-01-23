@@ -1,13 +1,17 @@
 import type { ApiError } from "browserfs/dist/node/core/api_error";
 import type Stats from "browserfs/dist/node/core/node_fs_stats";
 import {
+  createShortcut,
   filterSystemFiles,
   getIconByFileExtension,
   getShortcutInfo,
+  makeExternalShortcut,
 } from "components/system/Files/FileEntry/functions";
 import type { FileStat } from "components/system/Files/FileManager/functions";
 import {
   findPathsRecursive,
+  sortByDate,
+  sortBySize,
   sortContents,
 } from "components/system/Files/FileManager/functions";
 import type { FocusEntryFunctions } from "components/system/Files/FileManager/useFocusableEntries";
@@ -20,18 +24,18 @@ import { useFileSystem } from "contexts/fileSystem";
 import { useProcesses } from "contexts/process";
 import { useSession } from "contexts/session";
 import type { AsyncZipOptions, AsyncZippable } from "fflate";
-import ini from "ini";
 import { basename, dirname, extname, join, relative } from "path";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BASE_ZIP_CONFIG,
+  DESKTOP_PATH,
   FOLDER_ICON,
   INVALID_FILE_CHARACTERS,
   MOUNTABLE_EXTENSIONS,
   SHORTCUT_APPEND,
   SHORTCUT_EXTENSION,
 } from "utils/constants";
-import { bufferToUrl, cleanUpBufferUrl } from "utils/functions";
+import { bufferToUrl, cleanUpBufferUrl, preloadLibs } from "utils/functions";
 
 export type FileActions = {
   archiveFiles: (paths: string[]) => void;
@@ -68,15 +72,27 @@ type Folder = {
   updateFiles: (newFile?: string, oldFile?: string) => void;
 };
 
+type FolderFlags = {
+  hideFolders?: boolean;
+  hideLoading?: boolean;
+  preloadShortcuts?: boolean;
+  skipFsWatcher?: boolean;
+  skipSorting?: boolean;
+};
+
 const NO_FILES = undefined;
 
 const useFolder = (
   directory: string,
   setRenaming: React.Dispatch<React.SetStateAction<string>>,
   { blurEntry, focusEntry }: FocusEntryFunctions,
-  hideFolders = false,
-  hideLoading = false,
-  skipSorting = false
+  {
+    hideFolders,
+    hideLoading,
+    preloadShortcuts,
+    skipFsWatcher,
+    skipSorting,
+  }: FolderFlags
 ): Folder => {
   const [files, setFiles] = useState<Files | typeof NO_FILES>();
   const [downloadLink, setDownloadLink] = useState("");
@@ -103,8 +119,9 @@ const useFolder = (
   } = useFileSystem();
   const {
     sessionLoaded,
+    setIconPositions,
     setSortOrder,
-    sortOrders: { [directory]: [sortOrder, sortBy] = [] } = {},
+    sortOrders: { [directory]: [sortOrder, sortBy, sortAscending] = [] } = {},
   } = useSession();
   const [currentDirectory, setCurrentDirectory] = useState(directory);
   const { closeProcessesByUrl } = useProcesses();
@@ -125,7 +142,7 @@ const useFolder = (
   const isSimpleSort =
     skipSorting || !sortBy || sortBy === "name" || sortBy === "type";
   const updateFiles = useCallback(
-    async (newFile?: string, oldFile?: string, customSortOrder?: string[]) => {
+    async (newFile?: string, oldFile?: string) => {
       if (oldFile) {
         if (!(await exists(join(directory, oldFile)))) {
           const oldName = basename(oldFile);
@@ -170,6 +187,15 @@ const useFolder = (
           const dirContents = (await readdir(directory)).filter(
             filterSystemFiles(directory)
           );
+
+          if (preloadShortcuts) {
+            preloadLibs(
+              dirContents
+                .filter((entry) => entry.endsWith(SHORTCUT_EXTENSION))
+                .map((entry) => `${directory}/${entry}`)
+            );
+          }
+
           const sortedFiles = await dirContents.reduce(
             async (processedFiles, file) => {
               try {
@@ -184,9 +210,13 @@ const useFolder = (
                   newFiles[file] = await statsWithShortcutInfo(file, fileStats);
                   newFiles = sortContents(
                     newFiles,
-                    skipSorting
-                      ? []
-                      : customSortOrder || Object.keys(files || {})
+                    (!skipSorting && sortOrder) || [],
+                    isSimpleSort
+                      ? undefined
+                      : sortBy === "date"
+                      ? sortByDate(directory)
+                      : sortBySize,
+                    sortAscending
                   );
                 }
 
@@ -203,7 +233,19 @@ const useFolder = (
           if (dirContents.length > 0) {
             if (!hideLoading) setFiles(sortedFiles);
 
-            setSortOrder(directory, Object.keys(sortedFiles));
+            const newSortOrder = Object.keys(sortedFiles);
+
+            if (
+              !skipSorting &&
+              (!sortOrder ||
+                sortOrder?.some(
+                  (entry, index) => newSortOrder[index] !== entry
+                ))
+            ) {
+              window.requestAnimationFrame(() =>
+                setSortOrder(directory, newSortOrder)
+              );
+            }
           } else {
             setFiles(Object.create(null) as Files);
           }
@@ -221,14 +263,17 @@ const useFolder = (
       closeProcessesByUrl,
       directory,
       exists,
-      files,
       hideFolders,
       hideLoading,
       isSimpleSort,
       lstat,
+      preloadShortcuts,
       readdir,
       setSortOrder,
       skipSorting,
+      sortAscending,
+      sortBy,
+      sortOrder,
       stat,
       statsWithShortcutInfo,
     ]
@@ -258,7 +303,11 @@ const useFolder = (
     [directory, readFile]
   );
   const renameFile = async (path: string, name?: string): Promise<void> => {
-    const newName = name?.replace(INVALID_FILE_CHARACTERS, "").trim();
+    let newName = name?.replace(INVALID_FILE_CHARACTERS, "").trim();
+
+    if (newName?.endsWith(".")) {
+      newName = newName.slice(0, -1);
+    }
 
     if (newName) {
       const renamedPath = join(
@@ -271,6 +320,18 @@ const useFolder = (
       if (!(await exists(renamedPath))) {
         await rename(path, renamedPath);
         updateFolder(directory, renamedPath, path);
+      }
+
+      if (dirname(path) === DESKTOP_PATH) {
+        setIconPositions((currentPositions) => {
+          const { [path]: iconPosition, ...newPositions } = currentPositions;
+
+          if (iconPosition) {
+            newPositions[renamedPath] = iconPosition;
+          }
+
+          return newPositions;
+        });
       }
     }
   };
@@ -307,22 +368,16 @@ const useFolder = (
 
       const baseName = basename(path);
       const shortcutPath = `${baseName}${SHORTCUT_APPEND}${SHORTCUT_EXTENSION}`;
-      const shortcutData = ini.encode(
-        {
-          BaseURL: process,
-          IconFile:
-            pathExtension &&
-            (process !== "FileExplorer" ||
-              MOUNTABLE_EXTENSIONS.has(pathExtension))
-              ? getIconByFileExtension(pathExtension)
-              : FOLDER_ICON,
-          URL: path,
-        },
-        {
-          section: "InternetShortcut",
-          whitespace: false,
-        }
-      );
+      const shortcutData = createShortcut({
+        BaseURL: process,
+        IconFile:
+          pathExtension &&
+          (process !== "FileExplorer" ||
+            MOUNTABLE_EXTENSIONS.has(pathExtension))
+            ? getIconByFileExtension(pathExtension)
+            : FOLDER_ICON,
+        URL: path,
+      });
 
       newPath(shortcutPath, Buffer.from(shortcutData));
     },
@@ -340,6 +395,15 @@ const useFolder = (
 
       return filePaths
         .filter(Boolean)
+        .map(
+          ([path, file]) =>
+            [
+              path,
+              extname(path) === SHORTCUT_EXTENSION
+                ? makeExternalShortcut(file)
+                : file,
+            ] as [string, Buffer]
+        )
         .reduce<AsyncZippable>(
           (accFiles, [path, file]) =>
             addEntryToZippable(accFiles, createZippable(path, file)),
@@ -404,23 +468,27 @@ const useFolder = (
       );
       const uniqueName = await createPath(zipFolderName, directory);
 
-      await Promise.all(
-        Object.entries(unzippedFiles).map(
-          async ([extractPath, fileContents]) => {
-            const localPath = join(directory, uniqueName, extractPath);
+      try {
+        await Promise.all(
+          Object.entries(unzippedFiles).map(
+            async ([extractPath, fileContents]) => {
+              const localPath = join(directory, uniqueName, extractPath);
 
-            if (fileContents.length === 0 && extractPath.endsWith("/")) {
-              await mkdir(localPath);
-            } else {
-              if (!(await exists(dirname(localPath)))) {
-                await mkdirRecursive(dirname(localPath));
+              if (fileContents.length === 0 && extractPath.endsWith("/")) {
+                await mkdir(localPath);
+              } else {
+                if (!(await exists(dirname(localPath)))) {
+                  await mkdirRecursive(dirname(localPath));
+                }
+
+                await writeFile(localPath, Buffer.from(fileContents));
               }
-
-              await writeFile(localPath, Buffer.from(fileContents));
             }
-          }
-        )
-      );
+          )
+        );
+      } catch {
+        // Ignore failure to extract
+      }
 
       updateFolder(directory, uniqueName);
     },
@@ -496,6 +564,7 @@ const useFolder = (
     }),
     [addFile, directory, newPath, pasteToFolder, sortByOrder]
   );
+  const updatingFiles = useRef(false);
 
   useEffect(() => {
     if (directory !== currentDirectory) {
@@ -506,9 +575,7 @@ const useFolder = (
 
   useEffect(() => {
     if (sessionLoaded) {
-      if (!files) {
-        updateFiles(undefined, undefined, sortOrder);
-      } else {
+      if (files) {
         const fileNames = Object.keys(files);
 
         if (
@@ -538,6 +605,11 @@ const useFolder = (
             );
           }
         }
+      } else if (!updatingFiles.current) {
+        updatingFiles.current = true;
+        updateFiles().then(() => {
+          updatingFiles.current = false;
+        });
       }
     }
   }, [
@@ -558,10 +630,12 @@ const useFolder = (
   );
 
   useEffect(() => {
-    addFsWatcher?.(directory, updateFiles);
+    if (!skipFsWatcher) addFsWatcher?.(directory, updateFiles);
 
-    return () => removeFsWatcher?.(directory, updateFiles);
-  }, [addFsWatcher, directory, removeFsWatcher, updateFiles]);
+    return () => {
+      if (!skipFsWatcher) removeFsWatcher?.(directory, updateFiles);
+    };
+  }, [addFsWatcher, directory, removeFsWatcher, skipFsWatcher, updateFiles]);
 
   return {
     fileActions: {

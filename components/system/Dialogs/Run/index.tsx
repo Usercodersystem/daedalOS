@@ -29,6 +29,7 @@ const resourceAliasMap: Record<string, string> = {
   dos: "JSDOS",
   explorer: "FileExplorer",
   monaco: "MonacoEditor",
+  mspaint: "Paint",
   vlc: "VideoPlayer",
 };
 
@@ -65,9 +66,9 @@ const Run: FC<ComponentProcessProps> = () => {
 
       const addRunHistoryEntry = (): void =>
         setRunHistory((currentRunHistory) =>
-          currentRunHistory[0] !== resource
-            ? [resource, ...currentRunHistory]
-            : currentRunHistory
+          currentRunHistory[0] === resource
+            ? currentRunHistory
+            : [resource, ...currentRunHistory]
         );
       const [resourcePid, ...resourceUrl] = resource.split(" ");
       let resourcePath = resource;
@@ -83,17 +84,21 @@ const Run: FC<ComponentProcessProps> = () => {
 
       if (resourceExists || isIpfs || (await exists(resourcePath))) {
         if (isIpfs) {
-          const ipfsData = await getIpfsResource(resourcePath);
+          try {
+            const ipfsData = await getIpfsResource(resourcePath);
 
-          resourcePath = join(
-            DESKTOP_PATH,
-            await createPath(
-              await getIpfsFileName(resourcePath, ipfsData),
+            resourcePath = join(
               DESKTOP_PATH,
-              ipfsData
-            )
-          );
-          updateFolder(DESKTOP_PATH, basename(resourcePath));
+              await createPath(
+                await getIpfsFileName(resourcePath, ipfsData),
+                DESKTOP_PATH,
+                ipfsData
+              )
+            );
+            updateFolder(DESKTOP_PATH, basename(resourcePath));
+          } catch {
+            // Ignore failure to get ipfs resource
+          }
         }
 
         const stats = await stat(resourcePath);
@@ -112,7 +117,12 @@ const Run: FC<ComponentProcessProps> = () => {
           );
 
           if (pid) {
-            open(pid, { url: resourcePath });
+            open(pid, {
+              url:
+                pid === "Browser" && isIpfs
+                  ? resourceUrl.join(" ")
+                  : resourcePath,
+            });
             addRunHistoryEntry();
           } else {
             notFound(resourcePid);
@@ -128,7 +138,11 @@ const Run: FC<ComponentProcessProps> = () => {
           } else {
             const basePid = getProcessByFileExtension(extension);
 
-            if (basePid) open(basePid, { url: resourcePath });
+            if (basePid) {
+              open(basePid, {
+                url: basePid === "Browser" && isIpfs ? resource : resourcePath,
+              });
+            }
           }
 
           addRunHistoryEntry();

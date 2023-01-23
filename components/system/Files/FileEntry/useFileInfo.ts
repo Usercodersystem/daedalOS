@@ -27,21 +27,24 @@ const useFileInfo = (
     pid: "",
     url: "",
   }));
-  const visible = useRef(true);
+  const updatingInfo = useRef(false);
   const updateInfo = (newInfo: FileInfo): void => {
-    if (visible.current) setInfo(newInfo);
+    setInfo(newInfo);
+    updatingInfo.current = false;
   };
   const { fs, rootFs } = useFileSystem();
 
   useEffect(() => {
-    if (fs && rootFs) {
+    if (!updatingInfo.current && fs && rootFs) {
+      updatingInfo.current = true;
+
       const extension = extname(path).toLowerCase();
 
       if (
         !extension ||
         (isDirectory &&
-          (!MOUNTABLE_EXTENSIONS.has(extension) ||
-            rootFs.mntMap[path]?.getName() !== "FileSystemAccess"))
+          !MOUNTABLE_EXTENSIONS.has(extension) &&
+          rootFs.mntMap[path]?.getName() !== "FileSystemAccess")
       ) {
         getInfoWithoutExtension(
           fs,
@@ -54,13 +57,7 @@ const useFileInfo = (
       } else {
         getInfoWithExtension(fs, path, extension, updateInfo);
       }
-
-      visible.current = true;
     }
-
-    return () => {
-      visible.current = false;
-    };
   }, [fs, isDirectory, path, rootFs, useNewFolderIcon]);
 
   return [info, setInfo];

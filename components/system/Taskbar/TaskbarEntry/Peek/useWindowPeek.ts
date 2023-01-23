@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   MILLISECONDS_IN_SECOND,
   ONE_TIME_PASSIVE_EVENT,
+  PEEK_MAX_WIDTH,
 } from "utils/constants";
 import { getHtmlToImage } from "utils/functions";
 
-const FPS = 10;
+const FPS = 15;
 
 const renderFrame = async (
   previewElement: HTMLElement,
@@ -21,6 +22,13 @@ const renderFrame = async (
 
   const htmlToImage = await getHtmlToImage();
   const dataCanvas = await htmlToImage?.toCanvas(previewElement, {
+    ...(previewElement.clientWidth > PEEK_MAX_WIDTH && {
+      canvasHeight: Math.round(
+        (PEEK_MAX_WIDTH / previewElement.clientWidth) *
+          previewElement.clientHeight
+      ),
+      canvasWidth: PEEK_MAX_WIDTH,
+    }),
     filter: (element) => !(element instanceof HTMLSourceElement),
     skipAutoScale: true,
     style: {
@@ -30,13 +38,11 @@ const renderFrame = async (
 
   if (dataCanvas && dataCanvas.width > 0 && dataCanvas.height > 0) {
     if (
-      !dataCanvas
+      dataCanvas
         .getContext("2d")
         ?.getImageData(0, 0, dataCanvas.width, dataCanvas.height)
         .data.some(Boolean)
     ) {
-      nextFrame();
-    } else {
       const previewImage = new Image();
       const dataUrl = dataCanvas.toDataURL();
 
@@ -50,6 +56,8 @@ const renderFrame = async (
         ONE_TIME_PASSIVE_EVENT
       );
       previewImage.src = dataUrl;
+    } else {
+      nextFrame();
     }
   }
 };

@@ -29,9 +29,10 @@ export type RelativePosition = {
 type BaseProcessArguments = {
   allowResizing?: boolean;
   autoSizing?: boolean;
-  background?: string;
+  backgroundColor?: string;
   hideMaximizeButton?: boolean;
   hideMinimizeButton?: boolean;
+  hideTaskbarEntry?: boolean;
   hideTitlebarIcon?: boolean;
   initialRelativePosition?: RelativePosition;
   libs?: string[];

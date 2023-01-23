@@ -18,10 +18,16 @@ type FileStats = [string, FileStat];
 
 type SortFunction = (a: FileStats, b: FileStats) => number;
 
+export const sortByDate =
+  (directory: string) =>
+  ([aPath, aStats]: FileStats, [bPath, bStats]: FileStats): number =>
+    getModifiedTime(join(directory, aPath), aStats) -
+    getModifiedTime(join(directory, bPath), bStats);
+
 const sortByName = ([a]: FileStats, [b]: FileStats): number =>
   a.localeCompare(b, "en", { sensitivity: "base" });
 
-const sortBySize = (
+export const sortBySize = (
   [, { size: aSize }]: FileStats,
   [, { size: bSize }]: FileStats
 ): number => aSize - bSize;
@@ -66,19 +72,16 @@ export const sortContents = (
   Object.entries(contents).forEach((entry) => {
     const [, stat] = entry;
 
-    if (!stat.isDirectory()) {
-      files.push(entry);
-    } else {
-      folders.push(entry);
-    }
+    if (stat.isDirectory()) folders.push(entry);
+    else files.push(entry);
   });
 
   const sortContent = (fileStats: FileStats[]): FileStats[] => {
-    const sortedByName = fileStats.sort(sortByName);
+    fileStats.sort(sortByName);
 
     return sortFunction && sortFunction !== sortByName
-      ? sortedByName.sort(sortFunction)
-      : sortedByName;
+      ? fileStats.sort(sortFunction)
+      : fileStats;
   };
   const sortedFolders = sortContent(folders);
   const sortedFiles = sortContent(files);
@@ -103,9 +106,7 @@ export const sortFiles = (
   ascending: boolean
 ): Files => {
   const sortFunctionMap: Record<string, SortFunction> = {
-    date: ([aPath, aStats]: FileStats, [bPath, bStats]: FileStats): number =>
-      getModifiedTime(join(directory, aPath), aStats) -
-      getModifiedTime(join(directory, bPath), bStats),
+    date: sortByDate(directory),
     name: sortByName,
     size: sortBySize,
     type: sortByType,
@@ -123,7 +124,7 @@ export const iterateFileName = (name: string, iteration: number): string => {
   return `${fileName} (${iteration})${extension}`;
 };
 
-const createFileReaders = async (
+export const createFileReaders = async (
   files: DataTransferItemList | FileList | never[],
   directory: string,
   callback: (
@@ -212,7 +213,7 @@ export const getEventData = (
   const text =
     files.length > 0
       ? ""
-      : (event as React.DragEvent).dataTransfer?.getData("text");
+      : (event as React.DragEvent).dataTransfer?.getData("application/json");
 
   return { files, text };
 };
@@ -231,11 +232,9 @@ export const handleFileInputEvent = (
 
   const { files, text } = getEventData(event);
 
-  if (!text) {
-    createFileReaders(files, directory, callback).then(openTransferDialog);
-  } else {
+  if (text) {
     try {
-      const filePaths = JSON.parse(text || "[]") as string[];
+      const filePaths = JSON.parse(text) as string[];
 
       filePaths?.forEach(
         (path) =>
@@ -249,6 +248,8 @@ export const handleFileInputEvent = (
     } catch {
       // Failed to parse text data to JSON
     }
+  } else {
+    createFileReaders(files, directory, callback).then(openTransferDialog);
   }
 };
 

@@ -17,6 +17,7 @@ import { getUrlOrSearch, GOOGLE_SEARCH_QUERY, label } from "utils/functions";
 const Browser: FC<ComponentProcessProps> = ({ id }) => {
   const {
     icon: setIcon,
+    linkElement,
     url: changeUrl,
     processes: { [id]: process },
   } = useProcesses();
@@ -35,7 +36,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
 
     if (inputRef.current) inputRef.current.value = history[position + step];
   };
-  const [currentUrl, setCurrentUrl] = useState("");
+  const currentUrl = useRef("");
   const setUrl = useCallback(
     async (addressInput: string): Promise<void> => {
       const { contentWindow } = iframeRef.current || {};
@@ -48,7 +49,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
         setLoading(true);
         setSrcDoc("");
         if (isHtml) setSrcDoc((await readFile(addressInput)).toString());
-        setIcon(id, processDirectory["Browser"].icon);
+        setIcon(id, processDirectory.Browser.icon);
 
         if (!isHtml) {
           const addressUrl = await getUrlOrSearch(addressInput);
@@ -104,11 +105,17 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
   );
 
   useEffect(() => {
-    if (process && history[position] !== currentUrl) {
+    if (process && history[position] !== currentUrl.current) {
+      currentUrl.current = history[position];
       setUrl(history[position]);
-      setCurrentUrl(history[position]);
     }
-  }, [currentUrl, history, position, process, setUrl]);
+  }, [history, position, process, setUrl]);
+
+  useEffect(() => {
+    if (iframeRef?.current) {
+      linkElement(id, "peekElement", iframeRef.current);
+    }
+  }, [id, linkElement]);
 
   return (
     <StyledBrowser>
@@ -164,7 +171,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
             }}
             {...label(`${name}\n${bookmarkUrl}`)}
           >
-            <Icon $imgSize={16} alt={name} src={icon} />
+            <Icon alt={name} imgSize={16} src={icon} />
           </Button>
         ))}
       </nav>

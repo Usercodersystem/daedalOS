@@ -34,7 +34,6 @@ const StyledFileEntry = styled.li<StyledFileEntryProps>`
       figcaption {
         color: ${({ theme }) => theme.colors.fileEntry.text};
         font-size: ${({ theme }) => theme.sizes.fileEntry.fontSize};
-        letter-spacing: -0.1px;
         line-height: 1.2;
         margin: 1px 0;
         padding: 2px 1px;
@@ -80,8 +79,10 @@ const StyledFileEntry = styled.li<StyledFileEntryProps>`
     }
 
     &:hover {
-      background-color: ${({ theme }) =>
-        theme.colors.fileEntry.backgroundFocusedHover};
+      background-color: ${({ theme, $selecting }) =>
+        $selecting
+          ? theme.colors.fileEntry.backgroundFocused
+          : theme.colors.fileEntry.backgroundFocusedHover};
 
       &::before {
         border: ${({ theme }) =>

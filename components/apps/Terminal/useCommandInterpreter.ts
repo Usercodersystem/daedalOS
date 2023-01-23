@@ -1,11 +1,14 @@
 import { colorAttributes, rgbAnsi } from "components/apps/Terminal/color";
+import { config, PI_ASCII } from "components/apps/Terminal/config";
 import {
   aliases,
   autoComplete,
   commands,
   getFreeSpace,
+  getUptime,
   help,
   parseCommand,
+  printColor,
   printTable,
   unknownCommand,
 } from "components/apps/Terminal/functions";
@@ -24,6 +27,7 @@ import extensions from "components/system/Files/FileEntry/extensions";
 import {
   getModifiedTime,
   getProcessByFileExtension,
+  getShortcutInfo,
 } from "components/system/Files/FileEntry/functions";
 import { useFileSystem } from "contexts/fileSystem";
 import { requestPermission, resetStorage } from "contexts/fileSystem/functions";
@@ -31,14 +35,19 @@ import { useProcesses } from "contexts/process";
 import processDirectory from "contexts/process/directory";
 import { basename, dirname, extname, isAbsolute, join } from "path";
 import { useCallback, useEffect, useRef } from "react";
+import { useTheme } from "styled-components";
+import type UAParser from "ua-parser-js";
 import {
+  DEFAULT_LOCALE,
   DESKTOP_PATH,
   HIGH_PRIORITY_REQUEST,
   isFileSystemSupported,
-  ONE_DAY_IN_MILLISECONDS,
+  MILLISECONDS_IN_SECOND,
+  PACKAGE_DATA,
+  SHORTCUT_EXTENSION,
 } from "utils/constants";
 import { transcode } from "utils/ffmpeg";
-import { getTZOffsetISOString } from "utils/functions";
+import { getTZOffsetISOString, loadFiles } from "utils/functions";
 import { convert } from "utils/imagemagick";
 import { getIpfsFileName, getIpfsResource } from "utils/ipfs";
 import { fullSearch } from "utils/search";
@@ -49,6 +58,23 @@ const COMMAND_NOT_SUPPORTED = "The system does not support the command.";
 const FILE_NOT_FILE = "The system cannot find the file specified.";
 const PATH_NOT_FOUND = "The system cannot find the path specified.";
 const SYNTAX_ERROR = "The syntax of the command is incorrect.";
+
+const { alias } = PACKAGE_DATA;
+
+type WindowPerformance = Performance & {
+  memory: {
+    jsHeapSizeLimit: number;
+    totalJSHeapSize: number;
+  };
+};
+
+type IResultWithGPU = UAParser.IResult & { gpu: UAParser.IDevice };
+
+declare global {
+  interface Window {
+    UAParser: UAParser;
+  }
+}
 
 const useCommandInterpreter = (
   id: string,
@@ -77,8 +103,9 @@ const useCommandInterpreter = (
     processes,
     title: changeTitle,
   } = useProcesses();
+  const { name: themeName } = useTheme();
   const getFullPath = useCallback(
-    async (file: string): Promise<string> => {
+    async (file: string, writePath?: string): Promise<string> => {
       if (!file) return "";
 
       if (file.startsWith("ipfs://")) {
@@ -87,12 +114,12 @@ const useCommandInterpreter = (
           DESKTOP_PATH,
           await createPath(
             await getIpfsFileName(file, ipfsData),
-            DESKTOP_PATH,
+            writePath || DESKTOP_PATH,
             ipfsData
           )
         );
 
-        updateFolder(DESKTOP_PATH, basename(ipfsFile));
+        updateFolder(writePath || DESKTOP_PATH, basename(ipfsFile));
 
         return ipfsFile;
       }
@@ -111,12 +138,8 @@ const useCommandInterpreter = (
       } else {
         updateFolder(dirPath, basename(filePath));
       }
-
-      if (dirPath === cd.current && localEcho) {
-        readdir(dirPath).then((files) => autoComplete(files, localEcho));
-      }
     },
-    [cd, localEcho, readdir, updateFolder]
+    [updateFolder]
   );
   const commandInterpreter = useCallback(
     async (command = ""): Promise<string> => {
@@ -166,9 +189,6 @@ const useCommandInterpreter = (
               } else if (cd.current !== fullPath && localEcho) {
                 // eslint-disable-next-line no-param-reassign
                 cd.current = fullPath;
-                readdir(fullPath).then((files) =>
-                  autoComplete(files, localEcho)
-                );
               }
             } else {
               localEcho?.println(PATH_NOT_FOUND);
@@ -181,11 +201,7 @@ const useCommandInterpreter = (
         case "color": {
           const [r, g, b] = commandArgs;
 
-          if (
-            typeof r !== "undefined" &&
-            typeof g !== "undefined" &&
-            typeof b !== "undefined"
-          ) {
+          if (r !== undefined && g !== undefined && b !== undefined) {
             localEcho?.print(rgbAnsi(Number(r), Number(g), Number(b)));
           } else {
             const [[bg, fg] = []] = commandArgs;
@@ -255,12 +271,11 @@ const useCommandInterpreter = (
           terminal?.reset();
           terminal?.write(`\u001Bc${colorOutput.current.join("")}`);
           break;
-        case "date": {
+        case "date":
           localEcho?.println(
             `The current date is: ${getTZOffsetISOString().slice(0, 10)}`
           );
           break;
-        }
         case "del":
         case "erase":
         case "rd":
@@ -295,6 +310,9 @@ const useCommandInterpreter = (
               entries = await readdir(dirPath);
             }
 
+            const timeFormatter = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+              timeStyle: "short",
+            });
             const entriesWithStats = await Promise.all(
               entries
                 .filter(
@@ -309,14 +327,10 @@ const useCommandInterpreter = (
                   const fileStats = await stat(filePath);
                   const mDate = new Date(getModifiedTime(filePath, fileStats));
                   const date = mDate.toISOString().slice(0, 10);
-                  const time = new Intl.DateTimeFormat("en-US", {
-                    timeStyle: "short",
-                  })
-                    .format(mDate)
-                    .padStart(8, "0");
+                  const time = timeFormatter.format(mDate).padStart(8, "0");
                   const isDirectory = fileStats.isDirectory();
 
-                  totalSize += fileStats.size;
+                  totalSize += isDirectory ? 0 : fileStats.size;
                   if (isDirectory) {
                     directoryCount += 1;
                   } else {
@@ -345,7 +359,7 @@ const useCommandInterpreter = (
                   "Type/Size",
                   fullSizeTerminal ? 15 : 13,
                   true,
-                  (size) => (size !== "-1" ? size : ""),
+                  (size) => (size === "-1" ? "" : size),
                 ],
                 ["Name", terminal?.cols ? terminal.cols - 40 : 30],
               ],
@@ -359,7 +373,6 @@ const useCommandInterpreter = (
             localEcho?.println(
               `\t\t${directoryCount} Dir(s)${await getFreeSpace()}`
             );
-            if (localEcho) autoComplete(entries, localEcho);
           };
 
           if (
@@ -450,19 +463,18 @@ const useCommandInterpreter = (
           }
           break;
         }
-        case "git": {
+        case "git":
+        case "isogit":
           if (fs && localEcho) {
             await processGit(
               commandArgs,
               cd.current,
               localEcho,
               fs,
-              exists,
               updateFolder
             );
           }
           break;
-        }
         case "help": {
           const [commandName] = commandArgs;
 
@@ -489,10 +501,18 @@ const useCommandInterpreter = (
           }
           break;
         }
-        case "history": {
+        case "history":
           localEcho?.history.entries.forEach((entry, index) =>
             localEcho.println(`${(index + 1).toString().padStart(4)} ${entry}`)
           );
+          break;
+        case "ipfs": {
+          const [commandName, cid] = commandArgs;
+
+          if (commandName === "get" && cid) {
+            await getFullPath(`ipfs://${cid}`, cd.current);
+          }
+
           break;
         }
         case "kill":
@@ -526,7 +546,7 @@ const useCommandInterpreter = (
           }
           break;
         }
-        case "mount": {
+        case "mount":
           if (localEcho) {
             if (isFileSystemSupported()) {
               try {
@@ -534,13 +554,11 @@ const useCommandInterpreter = (
 
                 if (mappedFolder) {
                   const fullPath = join(cd.current, mappedFolder);
-                  const files = await readdir(fullPath);
 
                   updateFolder(cd.current, mappedFolder);
 
                   // eslint-disable-next-line no-param-reassign
                   cd.current = fullPath;
-                  autoComplete(files, localEcho);
                 }
               } catch {
                 // Ignore failure to mount
@@ -550,7 +568,6 @@ const useCommandInterpreter = (
             }
           }
           break;
-        }
         case "move":
         case "mv":
         case "ren":
@@ -583,14 +600,171 @@ const useCommandInterpreter = (
           }
           break;
         }
+        case "neofetch":
+        case "systeminfo": {
+          await loadFiles(["/Program Files/Xterm.js/ua-parser.js"]);
+
+          const {
+            browser,
+            cpu,
+            engine,
+            gpu,
+            os: hostOS,
+          } = (new window.UAParser().getResult() || {}) as IResultWithGPU;
+          const { cols, options } = terminal || {};
+          const userId = `public@${window.location.hostname}`;
+          const terminalFont = (options?.fontFamily || config.fontFamily)
+            ?.split(", ")
+            .find((font) =>
+              document.fonts.check(
+                `${options?.fontSize || config.fontSize || 12}px ${font}`
+              )
+            );
+          const { quota = 0, usage = 0 } =
+            (await navigator.storage.estimate()) || {};
+          const labelColor = 3;
+          const labelText = (text: string): string =>
+            `${rgbAnsi(...colorAttributes[labelColor].rgb)}${text}${
+              colorOutput.current?.[0] || rgbAnsi(...colorAttributes[7].rgb)
+            }`;
+          const output = [
+            userId,
+            Array.from({ length: userId.length }).fill("-").join(""),
+            `OS: ${alias} ${displayVersion()}`,
+          ];
+
+          if (hostOS?.name) {
+            output.push(
+              `Host: ${hostOS.name}${
+                hostOS?.version ? ` ${hostOS.version}` : ""
+              }${cpu?.architecture ? ` ${cpu?.architecture}` : ""}`
+            );
+          }
+
+          if (browser?.name) {
+            output.push(
+              `Kernel: ${browser.name}${
+                browser?.version ? ` ${browser.version}` : ""
+              }${engine?.name ? ` (${engine.name})` : ""}`
+            );
+          }
+
+          output.push(
+            `Uptime: ${getUptime(true)}`,
+            `Packages: ${Object.keys(processDirectory).length}`,
+            `Resolution: ${window.screen.width}x${window.screen.height}`,
+            `Theme: ${themeName}`
+          );
+
+          if (terminalFont) {
+            output.push(`Terminal Font: ${terminalFont}`);
+          }
+
+          if (gpu?.vendor) {
+            output.push(
+              `GPU: ${gpu.vendor}${gpu?.model ? ` ${gpu.model}` : ""}`
+            );
+          } else if (gpu?.model) {
+            output.push(`GPU: ${gpu.model}`);
+          }
+
+          if (window.performance && "memory" in window.performance) {
+            output.push(
+              `Memory: ${(
+                (window.performance as WindowPerformance).memory
+                  .totalJSHeapSize /
+                1024 /
+                1024
+              ).toFixed(0)}MB / ${(
+                (window.performance as WindowPerformance).memory
+                  .jsHeapSizeLimit /
+                1024 /
+                1024
+              ).toFixed(0)}MB`
+            );
+          }
+
+          if (usage && quota) {
+            output.push(
+              `Disk (/): ${(usage / 1024 / 1024 / 1024).toFixed(0)}G / ${(
+                quota /
+                1024 /
+                1024 /
+                1024
+              ).toFixed(0)}G (${((usage / quota) * 100).toFixed(2)}%)`
+            );
+          }
+
+          const longestLineLength = output.reduce(
+            (max, line) => Math.max(max, line.length),
+            0
+          );
+          const maxCols = cols || config.cols || 70;
+
+          if (localEcho) {
+            if (PI_ASCII[0].length + 1 + longestLineLength <= maxCols) {
+              output.push(
+                "\n",
+                [0, 4, 2, 6, 1, 5, 3, 7]
+                  .map((color) => printColor(color, colorOutput.current))
+                  .join(""),
+                [8, "C", "A", "E", 9, "D", "B", "F"]
+                  .map((color) => printColor(color, colorOutput.current))
+                  .join("")
+              );
+              PI_ASCII.forEach((imgLine, lineIndex) => {
+                let outputLine = output[lineIndex] || "";
+
+                if (lineIndex === 0) {
+                  const [user, system] = outputLine.split("@");
+
+                  outputLine = `${labelText(user)}@${labelText(system)}`;
+                } else {
+                  const [label, info] = outputLine.split(":");
+
+                  if (info) {
+                    outputLine = `${labelText(label)}:${info}`;
+                  }
+                }
+
+                localEcho.println(
+                  `${labelText(imgLine)} ${
+                    outputLine.padStart(outputLine.length + 1, " ") || ""
+                  }`
+                );
+              });
+            } else {
+              output.forEach((line) => localEcho.println(line));
+            }
+          }
+          break;
+        }
         case "sheep":
         case "esheep": {
           const { default: spawnSheep } = await import("utils/spawnSheep");
-          spawnSheep();
+          let [count = 1, duration = 0] = commandArgs;
+
+          if (!Number.isNaN(count) && !Number.isNaN(duration)) {
+            count = Number(count);
+            duration = Number(duration);
+
+            if (count > 1) {
+              await spawnSheep();
+              count -= 1;
+            }
+
+            const maxDuration =
+              (duration || (count > 1 ? 1 : 0)) * MILLISECONDS_IN_SECOND;
+
+            Array.from({ length: count })
+              .fill(0)
+              .map(() => Math.floor(Math.random() * maxDuration))
+              .forEach((delay) => setTimeout(spawnSheep, delay));
+          }
           break;
         }
         case "ps":
-        case "tasklist": {
+        case "tasklist":
           printTable(
             [
               ["PID", 30],
@@ -600,9 +774,8 @@ const useCommandInterpreter = (
             localEcho
           );
           break;
-        }
         case "py":
-        case "python": {
+        case "python":
           if (localEcho) {
             const [file] = commandArgs;
             const fullSourcePath = await getFullPath(file);
@@ -619,7 +792,6 @@ const useCommandInterpreter = (
             }
           }
           break;
-        }
         case "logout":
         case "restart":
         case "shutdown":
@@ -649,36 +821,17 @@ const useCommandInterpreter = (
           }
           break;
         }
-        case "uptime": {
-          if (window.performance) {
-            const [{ duration }] =
-              window.performance.getEntriesByType("navigation");
-            const bootTime = window.performance.timeOrigin + duration;
-            const uptimeInMilliseconds = Math.ceil(Date.now() - bootTime);
-            const daysOfUptime = Math.floor(
-              uptimeInMilliseconds / ONE_DAY_IN_MILLISECONDS
-            );
-            const displayUptime = new Date(uptimeInMilliseconds)
-              .toISOString()
-              .slice(11, 19);
-
-            localEcho?.println(
-              `Uptime: ${daysOfUptime} days, ${displayUptime}`
-            );
-          } else {
-            localEcho?.println(unknownCommand(baseCommand));
-          }
+        case "uptime":
+          localEcho?.println(`Uptime: ${getUptime()}`);
           break;
-        }
         case "ver":
         case "version":
           localEcho?.println(displayVersion());
           break;
         case "wapm":
-        case "wax": {
+        case "wax":
           if (localEcho) await loadWapm(commandArgs, localEcho);
           break;
-        }
         case "weather":
         case "wttr": {
           const response = await fetch(
@@ -757,14 +910,27 @@ const useCommandInterpreter = (
               if (extCommand) {
                 await commandInterpreter(`${extCommand} ${baseCommand}`);
               } else {
-                const basePid = getProcessByFileExtension(fileExtension);
+                let basePid = "";
+                let baseUrl = baseCommand;
 
-                if (basePid) open(basePid, { url: baseCommand });
+                if (fileExtension === SHORTCUT_EXTENSION) {
+                  ({ pid: basePid, url: baseUrl } = getShortcutInfo(
+                    await readFile(baseCommand)
+                  ));
+                } else {
+                  basePid = getProcessByFileExtension(fileExtension);
+                }
+
+                if (basePid) open(basePid, { url: baseUrl });
               }
             } else {
               localEcho?.println(unknownCommand(baseCommand));
             }
           }
+      }
+
+      if (localEcho) {
+        readdir(cd.current).then((files) => autoComplete(files, localEcho));
       }
 
       return cd.current;
@@ -791,6 +957,7 @@ const useCommandInterpreter = (
       rootFs,
       stat,
       terminal,
+      themeName,
       updateFile,
       updateFolder,
     ]

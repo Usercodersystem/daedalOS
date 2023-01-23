@@ -42,6 +42,11 @@ This project is greatly augmented by code from the open source community. Thank 
 - [Vanta.js](https://github.com/tengbao/vanta)
 - [Hexells](https://github.com/znah/hexells)
 - [Coastal Landscape](https://www.shadertoy.com/view/fstyD4)
+- [Matrix](https://github.com/Rezmason/matrix)
+- [QOI Decoder](https://gist.github.com/nicolaslegland/f0577cb49b1e56b729a2c0fc0aa151ba)
+- [jxl.js](https://github.com/niutech/jxl.js)
+- [fix-webm-duration](https://github.com/yusitnikov/fix-webm-duration)
+- [UAParser.js](https://github.com/faisalman/ua-parser-js)
 
 ## App Libraries
 
@@ -71,6 +76,10 @@ This project is greatly augmented by code from the open source community. Thank 
 - [Chess](https://sourceforge.net/projects/htmlchess/)
 - [jspaint](https://github.com/1j01/jspaint)
 - [Print.js](https://github.com/crabbly/print.js)
+- [Kiwi IRC](https://github.com/kiwiirc/kiwiirc)
+- [ClassiCube](https://github.com/UnknownShadow200/ClassiCube)
+- [rtf.js](https://github.com/tbluemel/rtf.js)
+- [Quake 3](https://github.com/lrusso/Quake3)
 
 ## Services
 

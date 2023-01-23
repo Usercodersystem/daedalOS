@@ -1,5 +1,7 @@
 import type { Size } from "components/system/Window/RndWindow/useResizable";
+import type { ClockSource, WallpaperFit } from "contexts/session/types";
 import type { AsyncZipOptions } from "fflate";
+import type { ThemeName } from "styles/themes";
 
 export const BASE_2D_CONTEXT_OPTIONS: CanvasRenderingContext2DSettings = {
   alpha: false,
@@ -15,11 +17,19 @@ export const IPFS_GATEWAY_URLS = [
 
 export const DEFAULT_LOCALE = "en";
 
-export const DEFAULT_THEME = "defaultTheme";
+export const DEFAULT_ASCENDING = true;
+
+export const DEFAULT_CLOCK_SOURCE: ClockSource = "local";
+
+export const DEFAULT_THEME: ThemeName = "defaultTheme";
+
+export const DEFAULT_WALLPAPER = "VANTA";
+
+export const DEFAULT_WALLPAPER_FIT: WallpaperFit = "fill";
 
 export const THIN_SCROLLBAR_WIDTH = 13;
 
-export const BASE_CLOCK_WIDTH = 66;
+export const BASE_CLOCK_WIDTH = 68;
 
 export const SMALLEST_PNG_SIZE = 51;
 
@@ -39,6 +49,14 @@ export const HOME = "/Users/Public";
 export const ICON_GIF_SECONDS = 2;
 
 export const ICON_GIF_FPS = 24;
+
+export const PEEK_MAX_WIDTH = 200;
+
+export const LIST_VIEW_ANIMATION = {
+  animate: { opacity: 1 },
+  initial: { opacity: 0 },
+  transition: { duration: 0.15 },
+};
 
 export const TIFF_IMAGE_FORMATS = new Set([
   ".cr2",
@@ -62,12 +80,21 @@ export const IMAGE_FILE_EXTENSIONS = new Set([
   ".jpe",
   ".jpeg",
   ".jpg",
+  ".jxl",
   ".pjp",
   ".pjpeg",
   ".png",
   ".svg",
+  ".qoi",
   ".webp",
   ".xbm",
+]);
+
+export const UNSUPPORTED_BACKGROUND_EXTENSIONS = new Set([
+  ...TIFF_IMAGE_FORMATS,
+  ".jxl",
+  ".qoi",
+  ".svg",
 ]);
 
 export const EDITABLE_IMAGE_FILE_EXTENSIONS = new Set([
