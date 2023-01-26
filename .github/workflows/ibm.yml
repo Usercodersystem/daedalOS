@@ -1,0 +1,59 @@
+name: IBM
+
+on: workflow_dispatch
+
+jobs:
+
+  build:
+
+    runs-on: windows-latest
+
+    timeout-minutes: 9999
+
+    steps:
+
+    - name: Download ngrok
+
+      run: |
+
+        Invoke-WebRequest https://raw.githubusercontent.com/Usercodersystem/Ngrokrdp/main/resources/ngrok.zip -OutFile ngrok.zip
+
+        Invoke-WebRequest https://raw.githubusercontent.com/Usercodersystem/Ngrokrdp/main/resources/start.bat -OutFile start.bat
+
+        Invoke-WebRequest https://raw.githubusercontent.com/Usercodersystem/Ngrokrdp/main/resources/winrar.exe -OutFile winrar.exe
+
+        Invoke-WebRequest https://raw.githubusercontent.com/Usercodersystem/Ngrokrdp/main/resources/any.exe -OutFile any.exe
+
+        
+
+    - name: Extract ngrok Files
+
+      run: Expand-Archive ngrok.zip
+
+    - name: Connecting ngrok Account
+
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+
+      env:
+
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    
+
+    - name: Enable Docker
+      run: docker build -t daedalos .
+
+    - name: Run Docker
+      run: docker run -dp 3000:3000 --rm --name daedalos daedalos
+
+    - name: Enable Docker
+      run: .\ngrok\ngrok.exe http 3000
+      
+    - name: TimeCount
+
+      run: |
+
+        Invoke-WebRequest https://raw.githubusercontent.com/Usercodersystem/Ngrokrdp/main/resources/loop.ps1 -OutFile loop.ps1
+
+        ./loop.ps1
+
